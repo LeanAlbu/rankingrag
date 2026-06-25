@@ -3,6 +3,7 @@
 .venv/
 env/
 venv/
+apresentacao.md
 
 # RAG Local Databases and Cache
 cache_md/
