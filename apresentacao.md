@@ -1,67 +1,89 @@
-# Roteiro de Apresentação Técnica: Agente RAG com Re-ranking
+# 🎙️ Roteiro de Apresentação: RAG Vetorial com Re-ranking Avançado
 
-Este documento serve como um guia passo a passo para apresentar o projeto. Ele explica o que cada componente do código faz, a justificativa por trás das escolhas arquiteturais e a demonstração prática da suite de testes e do agente.
-
----
-
-## Introdução Conceitual (O que falar primeiro)
-1.  **O Problema do RAG Comum:** Em sistemas RAG tradicionais, a busca é puramente vetorial (similaridade de cosseno). Isso frequentemente falha porque a busca pode trazer trechos de "introdução" ou "perguntas de pesquisa" (viés lexical/overmatching) em vez da resposta factual que está no corpo do texto.
-2.  **A Solução (Re-ranking):** Para resolver isso, fazemos uma busca inicial ampla (Top-40 chunks) no banco de dados vetorial (Dense Retrieval) e, em seguida, aplicamos um **Cross-Encoder multilíngue especializado em Português** para re-avaliar esses 40 candidatos, escolhendo estritamente os 3 melhores antes de enviar ao LLM.
+> **Como usar este documento:** Este é o seu guia de palco. Os tópicos principais são os conceitos que deve explicar, enquanto as marcações em colchetes como `[Ação]` indicam o que deve mostrar no ecrã ou no terminal.
 
 ---
 
-## Parte 1: Tour pelos Arquivos de Código (O que mostrar)
+## 1. Introdução Conceitual (O "Hook" da Apresentação)
 
-### 1. Configurações Centrais (`config.py`)
-*   **O que faz:** Centraliza os caminhos das pastas (`docs/`, `cache_md/`, `faiss_index/`) e as definições de modelos.
-*   **Por que é assim:**
-    *   **Embeddings:** Usamos o `paraphrase-multilingual-MiniLM-L12-v2`. Ele é multilíngue, leve e ideal para entender a semântica em Português.
-    *   **Re-ranker:** Usamos o `nreimers/mmarco-mMiniLMv2-L6-H384-v1`. Ele foi treinado no dataset MMARCO (traduzido para português) e ajusta as pontuações de relevância de forma muito mais precisa que modelos puramente em inglês.
+`[Dica de fala: Comece captando a atenção da banca/audiência com o problema real que enfrentamos e como o resolvemos.]`
 
-### 2. Ingestão Inteligente com Docling (`ingestor.py`)
-*   **O que faz:** Lê os PDFs em `docs/`, converte-os para Markdown estruturado, quebra-os em pedaços (chunks) com sobreposição de texto, gera os embeddings e os indexa localmente no FAISS.
-*   **Decisões Importantes para Destacar:**
-    *   **`do_ocr=False`:** Como os relatórios do governo são PDFs digitais nativos (com texto selecionável), desabilitar o OCR torna a conversão 20 vezes mais rápida e evita problemas com dependências complexas na máquina.
-    *   **Sistema de Cache (`cache_md/`):** A conversão de PDFs grandes por ferramentas de layout pode demorar minutos. O script salva o arquivo Markdown convertido em cache. Nas execuções seguintes, a leitura é instantânea (0.0s).
-    *   **LangChain RecursiveCharacterTextSplitter:** Quebra o Markdown de forma inteligente (respeitando cabeçalhos, tabelas e parágrafos) com chunks de 1000 caracteres e overlap de 200 para manter o contexto semântico.
-
-### 3. Recuperador Semântico de Larga Escala (`retriever.py`)
-*   **O que faz:** Carrega a base FAISS, faz a pesquisa semântica inicial retornando os 40 melhores candidatos, instancia o Cross-Encoder multilíngue, calcula a relevância real para cada um e escolhe o Top-3 estrito.
-*   **Decisões Importantes para Destacar:**
-    *   **Remoção da Busca Híbrida (BM25):** Inicialmente testamos uma busca híbrida com BM25 + FAISS. Contudo, em relatórios contendo listas de "perguntas metodológicas", o BM25 trazia essas páginas de perguntas devido à repetição exata das palavras da query. Isso monopolizava os resultados (Keyword Monopoly). A busca densa (FAISS) pura focada na semântica resolveu este viés lexical.
-    *   **Expansão para Top-40:** Aumentar de 15 para 40 garante que mesmo se a resposta ideal estiver em uma posição mais baixa na busca vetorial inicial, o re-ranker terá a chance de encontrá-la e promovê-la para o Top-3.
-
-### 4. Geração com LLM e Cláusula de Segurança (`generator.py`)
-*   **O que faz:** Conecta-se à API do OpenRouter utilizando o modelo `google/gemini-2.5-flash` para sintetizar a resposta com o contexto do Top-3.
-*   **Decisões Importantes para Destacar:**
-    *   **`max_tokens=1000`:** Evita que a requisição reserve uma quantia excessiva de tokens padrão no OpenRouter, o que preveniu o erro de créditos insuficientes (HTTP 402).
-    *   **Cláusula de Barreira (System Prompt):** Se os 3 chunks fornecidos pelo re-ranker não contiverem a resposta para a pergunta, o LLM é estritamente instruído a responder que não encontrou os dados com base nos relatórios, eliminando qualquer risco de alucinação.
+* **O Problema do RAG Tradicional:** "Quando construímos um RAG padrão usando apenas busca vetorial por proximidade (similaridade de cosseno), é comum esbarrar no *Viés Lexical* ou *Overmatching*. Em relatórios densos (como relatórios do governo), as páginas de índice, sumários ou introduções metodológicas repetem exatamente as 'perguntas de pesquisa'. A busca vetorial acabava trazendo essas páginas vazias, em vez de trazer o trecho do corpo do relatório com os dados factuais."
+* **A Nossa Solução (Pipeline com Re-ranking):** "Para resolver isso, adotamos uma arquitetura de duas etapas. Primeiro, abrimos uma rede ampla no banco vetorial, recuperando os **40 melhores chunks** (Dense Retrieval). Em seguida, passamos esses 40 trechos por um modelo **Cross-Encoder multilíngue otimizado para Português**. Ele atua como um 'juiz rigoroso', lendo a pergunta e cada trecho ao mesmo tempo para calcular uma nota de relevância real, elegendo estritamente os **3 melhores** antes de enviar para o LLM."
+* **O Ajuste Fino da Escrita (Texto Coeso):** "Para evitar que o LLM respondesse em tópicos (bullet points) secos, configuramos o System Prompt para sintetizar essas 3 recomendações e suas justificativas em um texto contínuo e corrido, tornando a leitura muito mais fluida e profissional."
 
 ---
 
-## Parte 2: Roteiro da Demonstração Prática (O que rodar ao vivo)
+## 2. Tour pelo Código-Fonte (Passo a Passo nas Páginas)
 
-### Passo 1: Mostrar a Suite de Testes Automática (`test_agent.py`)
-1.  Abra o terminal e execute a suite de testes:
-    ```bash
-    python test_agent.py
-    ```
-2.  **O que destacar na execução:**
-    *   Mostre que o script lê as 11 perguntas de teste diretamente do gabarito em HTML (`goldSet.html`).
-    *   Aponte o tempo de resposta rápido: cada re-ranking de 40 candidatos na CPU local leva cerca de **1.2 segundos**, e a chamada do Gemini leva cerca de **2.5 segundos**.
-    *   Mostre o arquivo gerado [eval_results.md](file:///home/leshy/Documentos/Code/CsUFT/iaGen/rankingrag/eval_results.md), que compara lado a lado as respostas geradas contra as esperadas pelo gabarito.
+`[Ação: Abra o seu editor de código e vá abrindo os arquivos um a um. Mostre as funções mencionadas.]`
 
-### Passo 2: Mostrar o Comportamento de Resoluções de Casos Difíceis
-Mostre as respostas no arquivo `eval_results.md` para destacar a inteligência do sistema:
-*   **Pergunta 8 (Bolsa Família):** Mostre que o agente recuperou com precisão os impactos na saúde (altura das crianças) e na educação (frequência escolar), respondendo exatamente como o gabarito.
-*   **Pergunta 11 (Previdência):** Destaque que o agente identificou corretamente os indicadores usados (TR - Taxa de Reposição e TIR - Taxa Interna de Retorno).
-*   **Pergunta 6 (APS - Falta de dados):** Mostre que, por não haver dados sobre a rotatividade exata de médicos nos chunks recuperados, o agente acionou a cláusula de segurança e disse honestamente que os documentos não possuíam a informação, provando que o sistema é seguro e não alucina.
+### 📄 `config.py` (Central de Modelos e Caminhos)
+* **O que mostrar no código:** As variáveis de diretórios e nomes dos modelos de IA.
+* **Explicação do código:**
+    *   `DOCS_DIRS = ["./docs"]`: Aponta estritamente para a pasta onde estão os relatórios originais do governo.
+    *   `EMBEDDING_MODEL_NAME`: Usamos o modelo `paraphrase-multilingual-MiniLM-L12-v2`. Ele gera vetores de 384 dimensões e compreende português de forma eficiente, rodando localmente de forma extremamente ágil na CPU.
+    *   `RERANK_MODEL_NAME = "nreimers/mmarco-mMiniLMv2-L6-H384-v1"`: Este é o pulo do gato. Ele é um Cross-Encoder multilíngue treinado na base MMARCO (MS MARCO traduzido). Ele entende a semântica do português e dá pontuações precisas, filtrando o ruído lexical.
+* **Por que é assim:** Centralizar as configurações em um arquivo evita "magic strings" espalhadas pelo código e facilita a troca rápida de modelos e pastas se o projeto crescer.
 
-### Passo 3: Chat Interativo (`agent.py`)
-1.  Execute o agente interativo:
-    ```bash
-    python agent.py
-    ```
-2.  Faça uma pergunta livre sobre os relatórios (ex: *"Qual a recomendação para o abono salarial?"*).
-3.  Mostre que o terminal imprime os 3 melhores chunks ordenados pelo score do Cross-Encoder multilíngue, seguido da resposta limpa contendo as top 3 recomendações e suas justificativas curtas de até 2 linhas.
-4.  Mostre o comando especial `reingestar`, caso novos PDFs sejam inseridos na pasta `docs/`.
+### 📄 `ingestor.py` (Ingestão Estruturada com Cache)
+* **O que mostrar no código:** A função `convert_pdf_to_markdown`, o parâmetro `do_ocr=False` e a geração do FAISS em `ingest_documents`.
+* **Explicação do código:**
+    *   **Docling (`DocumentConverter`):** Usado para extrair tabelas e manter a estrutura hierárquica do PDF convertendo para Markdown.
+    *   **`do_ocr=False`:** Desativado porque os PDFs são digitais nativos. Ativar o OCR processaria as páginas como imagens, o que levaria horas. Sem OCR, a leitura é rápida e limpa.
+    *   **Sistema de Cache (`cache_md/`):** Linhas 48-55 verificam se o arquivo Markdown correspondente já existe no cache. Se sim, carrega dele instantaneamente.
+    *   **`RecursiveCharacterTextSplitter`:** Linhas 109-115 dividem o texto usando separadores lógicos (parágrafos, quebras de linha) para evitar cortar tabelas ou sentenças no meio.
+    *   **FAISS (`FAISS.from_documents`):** Gera os vetores e salva o índice em disco (`./faiss_index`) usando os embeddings locais.
+* **Por que é assim:** Ingestão estruturada preserva o layout do PDF (tabelas e listas), o cache economiza poder de processamento em execuções repetidas, e o FAISS local elimina custos de nuvem.
+
+### 📄 `retriever.py` (Recuperação Vetorial e Re-ranking)
+* **O que mostrar no código:** O carregamento cacheado dos modelos (linhas 10-13), a função `retrieve_and_rerank` e a chamada `db.similarity_search(query, k=top_k_initial)`.
+* **Explicação do código:**
+    *   **Variáveis Globais (`_vector_db`, `_cross_encoder`):** Linhas 11-13 funcionam como cache em memória. Elas evitam que o Python tenha que recarregar o banco vetorial e o modelo Cross-Encoder (que pesam ~500MB) a cada pergunta do usuário no chat.
+    *   **Busca Ampla (`top_k_initial=40`):** Linhas 77-80 resgatam os 40 chunks semanticamente mais próximos no FAISS.
+    *   **Re-ranking (`cross_encoder.predict`):** Linhas 89-99 criam pares de `[[query, chunk]]` e rodam a inferência na CPU local, ordenando os chunks por relevância factual e separando estritamente os top-3.
+* **Por que é assim:**
+    *   **A remoção do BM25:** "Nós chegamos a implementar busca híbrida (BM25 + FAISS), mas o BM25 trazia páginas de sumário que repetiam as palavras da pergunta. O FAISS puro foca na semântica do texto, e a expansão para 40 chunks garante que a resposta factual estará na mesa para o Re-ranker selecionar."
+    *   **O Cross-Encoder Multilíngue:** Ele ajusta a ordem real e promove trechos ricos que usam sinônimos em português, ignorando trechos que apenas repetem palavras-chave.
+
+### 📄 `generator.py` (Integração de Sintese e Prompt Blindado)
+* **O que mostrar no código:** A função `generate_response`, o `system_prompt` formatando em parágrafos contínuos e o parâmetro `max_tokens=1000`.
+* **Explicação do código:**
+    *   **OpenRouter Client:** Conecta-se à API utilizando as credenciais locais.
+    *   **`system_prompt` (Linhas 46-55):** O prompt orienta o modelo a basear-se *estritamente* no contexto fornecido, responder de forma factual (dizendo que não sabe se a resposta não estiver lá) e entregar **estritamente 3 recomendações mais acionáveis e justificativas de até 2 linhas em formato de parágrafos tradicionais e corridos (sem tópicos/listas)**.
+    *   **`max_tokens=1000`:** Garante que a requisição não tente reservar o contexto máximo da API do OpenRouter, o que esgotava a cota da chave gratuita e causava erros 402.
+* **Por que é assim:** Garante segurança total (sem alucinações), controle orçamentário rígido de chamadas e entrega o formato de texto corrido exigido.
+
+### 📄 `agent.py` (O Chat no Terminal)
+* **O que mostrar no código:** O loop interativo `while True` e a inicialização automática do banco vetorial.
+* **Explicação do código:**
+    *   Verifica se o índice FAISS existe. Se não existir, chama o `ingestor.py` automaticamente antes de ligar o chat.
+    *   Oferece o comando especial `reingestar`, que limpa a memória e roda o processamento dos PDFs novamente se o usuário adicionar novos arquivos à pasta `docs/`.
+
+### 📄 `test_agent.py` (Suite de Testes e Gabarito)
+* **O que mostrar no código:** O parseamento do HTML com `BeautifulSoup` e a gravação do `eval_results.md`.
+* **Explicação do código:**
+    *   Varre o arquivo `goldSet.html`, extrai as 11 perguntas, as respostas esperadas e os pontos que deveriam ser recuperados.
+    *   Roda cada pergunta pelo retriever e generator, mede o tempo exato de busca e geração e gera o relatório estruturado [eval_results.md](file:///home/leshy/Documentos/Code/CsUFT/iaGen/rankingrag/eval_results.md) para auditoria.
+
+---
+
+## 3. Demonstração Prática (Showcase ao vivo)
+
+### 🚀 Passo 1: Executando a Suite de Testes Automática
+`[Ação: Abra o terminal e digite: python test_agent.py]`
+*   **O que falar enquanto roda:** "Desenvolvemos essa suite de testes automática para avaliar a qualidade e velocidade do RAG. Notem o tempo de resposta: o re-ranking de 40 candidatos roda na CPU local em cerca de **1.2 segundos** e a síntese do LLM volta em **2.5 segundos**."
+*   `[Ação: Abra o arquivo eval_results.md gerado na pasta do projeto]` "Aqui está o relatório final comparando o gabarito oficial com as respostas do nosso agente."
+
+### 🧠 Passo 2: Mostrando Casos de Sucesso e Segurança
+`[Ação: Role o arquivo eval_results.md no editor e mostre estas perguntas específicas]`
+*   **Acurácia (Teste 8 e 11):** "Vejam a Pergunta 8 sobre o Bolsa Família. O agente recuperou com precisão os impactos em saúde (altura de crianças) e educação. Na Pergunta 11, ele identificou os indicadores TR (Taxa de Reposição) e TIR (Taxa Interna de Retorno) de forma cirúrgica."
+*   **Segurança (Teste 6 - APS):** "Vejam o Teste 6. A pergunta era sobre a permanência de profissionais na APS. Como esses dados específicos não constavam nas fontes, o nosso agente acionou a cláusula de barreira e declarou que os documentos não continham a resposta. **Nosso RAG é 100% seguro contra alucinações.**"
+*   **Texto Coeso:** "Reparem que todas as respostas agora fluem em parágrafos corridos normais, sem tópicos ou bullet points, atendendo a essa exigência de leitura fluida."
+
+### 💬 Passo 3: Chat Interativo Ao Vivo
+`[Ação: No terminal, execute: python agent.py]`
+*   **O que falar:** "Além dos testes, o sistema está pronto para uso como um assistente interativo no terminal."
+*   `[Ação: Digite a pergunta: "Quais inconsistências foram identificadas no abono salarial?"]`
+*   **Conclusão:** "Observem como o terminal mostra a pontuação do Cross-Encoder indicando o score de relevância, e entrega a resposta final em formato contínuo de parágrafo, contendo as recomendações acionáveis e suas justificativas."
+*   *(Opcional)* Mencione que se novos arquivos forem adicionados, basta digitar `reingestar` no chat.
