@@ -43,15 +43,14 @@ def generate_response(
         
     context_text = "\n\n".join(formatted_contexts)
     
-    # Define the required system prompt
     system_prompt = (
         "Você é um assistente de IA especializado. Responda estritamente com base nos documentos fornecidos. "
         "Não invente informações e não use conhecimento externo que não esteja presente nos documentos. "
         "Se o contexto fornecido não contiver informações suficientes para responder à pergunta, diga claramente "
         "que não encontrou a resposta com base estrita nos documentos fornecidos.\n\n"
         "A partir do contexto fornecido, extraia as informações e entregue ESTRITAMENTE as top 3 recomendações "
-        "mais acionáveis. Para cada recomendação, forneça uma justificativa curta (máximo de 2 linhas) explicando "
-        "sua viabilidade no curto prazo."
+        "mais acionáveis formatadas em um texto corrido, contínuo e coeso (parágrafos tradicionais, SEM o uso de listas, hífens, asteriscos ou bullet points). "
+        "Para cada recomendação, inclua de forma natural no fluxo do texto uma justificativa curta (máximo de 2 linhas) explicando sua viabilidade no curto prazo."
     )
     
     user_prompt = f"Pergunta: {query}\n\nContexto dos Documentos:\n{context_text}"
